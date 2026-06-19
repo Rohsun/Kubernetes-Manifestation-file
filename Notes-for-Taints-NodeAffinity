@@ -1,0 +1,676 @@
+KUBERNETES TAINTS, TOLERATIONS AND NODE AFFINITY NOTES
+
+
+What is Taint?
+
+
+Taint is applied on a Node.
+
+It controls which Pods are allowed to run on that Node.
+
+
+Think:
+
+Taint = Node says:
+
+"Only Pods with permission can come here"
+
+
+Example:
+
+
+Node
+
+ |
+
+Taint applied
+
+ |
+
+Only matching Pods can run
+
+
+
+Without toleration:
+
+Pod
+
+X
+
+Cannot schedule on that node
+
+
+
+With toleration:
+
+Pod
+
+✓
+
+Can schedule on that node
+
+
+
+--------------------------------------------------
+
+
+TAINT COMMAND
+
+
+Apply taint to node:
+
+
+kubectl taint nodes <node-name> key=value:effect
+
+
+
+Example:
+
+
+kubectl taint nodes worker-1 app=database:NoSchedule
+
+
+
+Meaning:
+
+
+Node:
+
+worker-1
+
+
+Taint:
+
+app=database
+
+
+Effect:
+
+NoSchedule
+
+
+
+Now Kubernetes will not schedule normal Pods on this node.
+
+
+
+--------------------------------------------------
+
+
+TAINT EFFECTS
+
+
+
+1. NoSchedule
+
+
+New Pods will not be scheduled on this node.
+
+
+Existing Pods continue running.
+
+
+
+Example:
+
+
+Node:
+
+database-node
+
+
+Taint:
+
+app=db:NoSchedule
+
+
+
+Only Pods with matching toleration can enter.
+
+
+
+--------------------------------------------------
+
+
+2. PreferNoSchedule
+
+
+Kubernetes tries not to schedule Pods here.
+
+But if required, it can schedule.
+
+
+
+--------------------------------------------------
+
+
+3. NoExecute
+
+
+Removes existing Pods that do not tolerate the taint.
+
+
+Example:
+
+
+Node has:
+
+app=db:NoExecute
+
+
+Existing normal Pods are removed.
+
+
+
+--------------------------------------------------
+
+
+WHAT IS TOLERATION?
+
+
+Toleration is applied on Pod.
+
+
+It tells Kubernetes:
+
+
+"I accept this Node taint"
+
+
+
+Example:
+
+
+Node taint:
+
+
+app=database:NoSchedule
+
+
+
+Pod toleration:
+
+
+app=database
+
+
+Now Pod can run on that Node.
+
+
+
+--------------------------------------------------
+
+
+TAINT + TOLERATION FLOW
+
+
+
+Node:
+
+
+worker-1
+
+
+Taint:
+
+
+app=database:NoSchedule
+
+
+
+Pod:
+
+
+Toleration:
+
+
+app=database
+
+
+
+Result:
+
+
+Pod can schedule on worker-1
+
+
+
+Without toleration:
+
+
+Pod stays Pending
+
+
+
+--------------------------------------------------
+
+
+EXAMPLE YAML
+
+
+Node taint:
+
+
+kubectl taint nodes worker-1 app=database:NoSchedule
+
+
+
+Pod YAML:
+
+
+apiVersion: v1
+
+kind: Pod
+
+
+metadata:
+
+  name: database-pod
+
+
+
+spec:
+
+
+  tolerations:
+
+
+  - key: "app"
+
+    operator: "Equal"
+
+    value: "database"
+
+    effect: "NoSchedule"
+
+
+
+  containers:
+
+
+  - name: nginx
+
+    image: nginx
+
+
+
+This Pod can run on the tainted node.
+
+
+
+==================================================
+
+
+NODE AFFINITY
+
+
+Node Affinity controls where Pods should run based on Node labels.
+
+
+Think:
+
+
+Affinity = Pod chooses the Node
+
+
+Taint = Node rejects Pods
+
+
+
+Example:
+
+
+Node labels:
+
+
+worker-1
+
+disk=ssd
+
+
+
+worker-2
+
+disk=hdd
+
+
+
+Pod says:
+
+
+"I need SSD node"
+
+
+
+Kubernetes schedules Pod on:
+
+
+worker-1
+
+
+
+--------------------------------------------------
+
+
+ADD LABEL TO NODE
+
+
+Command:
+
+
+kubectl label nodes worker-1 disk=ssd
+
+
+
+Check:
+
+
+kubectl get nodes --show-labels
+
+
+
+--------------------------------------------------
+
+
+NODE AFFINITY TYPES
+
+
+
+1. requiredDuringSchedulingIgnoredDuringExecution
+
+
+Hard rule.
+
+
+If matching node is not available:
+
+Pod stays Pending.
+
+
+
+Example:
+
+
+Need:
+
+disk=ssd
+
+
+
+No SSD node:
+
+
+Pod Pending
+
+
+
+--------------------------------------------------
+
+
+2. preferredDuringSchedulingIgnoredDuringExecution
+
+
+Soft rule.
+
+
+Kubernetes tries to follow it.
+
+
+If unavailable:
+
+Pod can run elsewhere.
+
+
+
+--------------------------------------------------
+
+
+NODE AFFINITY YAML EXAMPLE
+
+
+
+apiVersion: v1
+
+kind: Pod
+
+
+metadata:
+
+  name: nginx-affinity
+
+
+
+spec:
+
+
+  affinity:
+
+
+    nodeAffinity:
+
+
+      requiredDuringSchedulingIgnoredDuringExecution:
+
+
+        nodeSelectorTerms:
+
+
+        - matchExpressions:
+
+
+          - key: disk
+
+            operator: In
+
+            values:
+
+            - ssd
+
+
+
+  containers:
+
+
+  - name: nginx
+
+    image: nginx
+
+
+
+Meaning:
+
+
+Run this Pod only on nodes having:
+
+
+disk=ssd
+
+
+
+--------------------------------------------------
+
+
+TAINT vs AFFINITY DIFFERENCE
+
+
+
+Taint:
+
+
+Applied on Node
+
+
+Purpose:
+
+"Keep unwanted Pods away"
+
+
+
+Affinity:
+
+
+Applied on Pod
+
+
+Purpose:
+
+"Choose required Nodes"
+
+
+
+Example:
+
+
+
+Database Node:
+
+
+Taint:
+
+app=db:NoSchedule
+
+
+
+Database Pod:
+
+
+Toleration:
+
+app=db
+
+
+
+Also:
+
+
+Database Pod:
+
+
+Node Affinity:
+
+disk=ssd
+
+
+
+Final result:
+
+
+Database Pod runs only on:
+
+
+Node
+
+AND
+
+Node must have SSD
+
+AND
+
+Pod must tolerate taint
+
+
+
+--------------------------------------------------
+
+
+REAL WORLD USE CASES
+
+
+
+Database workloads:
+
+
+Node:
+
+dedicated database nodes
+
+
+Taint:
+
+
+workload=db:NoSchedule
+
+
+
+Database Pods:
+
+
+Toleration:
+
+workload=db
+
+
+
+Node Affinity:
+
+zone=database
+
+
+
+Result:
+
+
+Only database Pods run on database nodes.
+
+
+
+GPU workloads:
+
+
+GPU Node:
+
+
+Taint:
+
+gpu=true:NoSchedule
+
+
+
+ML Pod:
+
+
+Toleration:
+
+gpu=true
+
+
+Node Affinity:
+
+gpu=true
+
+
+
+Result:
+
+
+Only ML workloads use GPU nodes.
+
+
+
+--------------------------------------------------
+
+
+MEMORY TRICK
+
+
+Taint:
+
+Node says:
+
+"Don't come unless allowed"
+
+
+
+Toleration:
+
+Pod says:
+
+"I am allowed"
+
+
+
+Affinity:
+
+Pod says:
+
+"I prefer / require this type of Node"
